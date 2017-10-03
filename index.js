@@ -220,9 +220,8 @@ addEventListener("load", () => {
     move() {
       var creatures = [...game.enemies, game.player];
       for (var creature of creatures) {
-        var angle = Math.atan2(this.position.y - game.player.position.y, this.position.x - game.player.position.x);
         if (distance(creature, this) < creature.radius + this.radius && !(creature === this.lastBouncedWith && this.bounces === this.lastBouncedAt)) {
-          if (!(creature === game.player && game.rightPressed && angle - game.player.shield / 2 + Math.PI * 2 < angle + Math.PI * 2 && angle + game.player.shield / 2 + Math.PI * 2)) {
+          if (!(creature === game.player && game.rightPressed && (Math.abs(game.player.angle - Math.atan2(this.position.y - game.player.position.y, this.position.x - game.player.position.x)) + 2 * Math.PI) % (2 * Math.PI) < game.player.shield)) {
             creature.life -= this.damage;
             if (creature === game.player) game.damageStar = false;
           }
