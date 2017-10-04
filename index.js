@@ -20,6 +20,9 @@ addEventListener("load", () => {
       for (var proyectile of this.proyectiles) proyectile.div.remove();
       for (var drop of this.drops) drop.div.remove();
       this.init();
+      player.position = new Vector(innerWidth / 2, innerHeight / 2);
+      player.life = player.maxLife;
+      this.paused = false;
     }
 
     init() {
@@ -34,34 +37,10 @@ addEventListener("load", () => {
       this.rightPressed = false;
       this.attDelay = 0;
       this.mousePosition = new Vector(innerWidth / 2, innerHeight / 2);
-      this.player = new Player(this.mousePosition, 87, 65, 83, 68, 16);
       this.damageStar = true;
       this.bottomStar = true;
-      this.skills = [
-        new Skill(this.player, player => {
-          game.player.maxLife += 5;
-          game.player.life += 5;
-          document.getElementById("max-health").innerText = game.player.maxLife;
-        }, "", "Life", "Adds 5 to the player's max life."),
-        new Skill(this.player, player => {
-          game.player.maxBounces++;
-        }, "", "Bounciness", "Your bullets bounce one more time."),
-        new Skill(this.player, player => {
-          game.player.damage++;
-        }, "", "Damage", "Increases your bullets' damage by one."),
-        new Skill(this.player, player => {
-          game.player.attDelay -= 5;
-        }, "", "Attack speed", "Increases your attack speed."),
-        new Skill(this.player, player => {
-          game.player.speedMultiplier *= 1.15;
-        }, "", "Speed", "Increases your run speed by 15%."),
-        new Skill(this.player, player => {
-          game.player.shield *= 1.15;
-        }, "", "Shield", "Increases your shield size by 15%.")
-      ];
-      document.getElementById("health").innerText = this.player.life;
-      document.getElementById("max-health").innerText = this.player.maxLife;
-      document.getElementById("skill-points").innerText = this.player.skillPoints;
+      document.getElementById("health").innerText = player.life;
+      document.getElementById("max-health").innerText = player.maxLife;
     }
   }
 
@@ -88,6 +67,8 @@ addEventListener("load", () => {
       document.getElementById("level-selection").style.display = "none";
       this.index = 0;
       game.currentLevel = this;
+      game.restart();
+      requestAnimationFrame(loop);
     }
 
     spawnEnemy() {
@@ -106,25 +87,33 @@ addEventListener("load", () => {
       this.left = left;
       this.down = down;
       this.right = right;
-      this.maxLife = 5;
+      this.maxLife = 10;
       this._life = this.maxLife;
       this.maxBounces = 2;
-      this._skillPoints = 0;
       this.speedMultiplier = 1.5;
       this.damage = 1;
       this.attDelay = 60;
-      this.shield = Math.PI / 4;
+      this.shield = Math.PI / 2;
       this.div.classList.add("player");
+      this.canvas = document.createElement("canvas");
+      this.canvas.width = radius * 2;
+      this.canvas.height = radius * 2;
+      this.ctx = this.canvas.getContext("2d");
+      this.ctx.strokeStyle = "red";
+      this.ctx.lineWidth = 3;
+      document.body.appendChild(this.canvas);
     }
 
     moveX(length) {
       this.position.x += this.speed.x * this.speedMultiplier / length;
       this.div.style.left = (this.position.x - this.radius) + "px";
+      this.canvas.style.left = (this.position.x - this.radius) + "px";
     }
 
     moveY(length) {
       this.position.y += (this.speed.y + 1) * this.speedMultiplier / length;
       this.div.style.top = (this.position.y - this.radius) + "px";
+      this.canvas.style.top = (this.position.y - this.radius) + "px";
     }
 
     rotate() {
@@ -149,19 +138,11 @@ addEventListener("load", () => {
       }
       document.getElementById("health").innerText = this.life;
     }
-
-    get skillPoints() {
-      return this._skillPoints;
-    }
-
-    set skillPoints(value) {
-      this._skillPoints = value;
-    }
   }
 
   class Skill {
     constructor(player, onUpgrade, src, name, description) {
-      this.player = player;
+      player = player;
       this.level = 1;
       this.onUpgrade = onUpgrade;
       this.row = document.createElement("tr");
@@ -187,11 +168,11 @@ addEventListener("load", () => {
       this.button.appendChild(img);
       this.button.classList.add("button");
       this.button.addEventListener("click", function() {
-        if (this.level != 10 && this.level <= game.player.skillPoints) {
+        if (this.level != 10 && this.level <= skillPoints) {
           onUpgrade();
+          skillPoints -= this.level;
           this.level++;
-          game.player.skillPoints -= this.level;
-          document.getElementById("skill-points").innerText = game.player.skillPoints;
+          document.getElementById("skill-points").innerText = skillPoints;
           this.updateLevelSpan();
           if (this.level === 10) this.button.remove();
         }
@@ -218,12 +199,12 @@ addEventListener("load", () => {
     }
 
     move() {
-      var creatures = [...game.enemies, game.player];
+      var creatures = [...game.enemies, player];
       for (var creature of creatures) {
         if (distance(creature, this) < creature.radius + this.radius && !(creature === this.lastBouncedWith && this.bounces === this.lastBouncedAt)) {
-          if (!(creature === game.player && game.rightPressed && (Math.abs(game.player.angle - Math.atan2(this.position.y - game.player.position.y, this.position.x - game.player.position.x)) + 2 * Math.PI) % (2 * Math.PI) < game.player.shield)) {
+          if (!(creature === player && game.rightPressed && (Math.abs(player.angle - Math.atan2(this.position.y - player.position.y, this.position.x - player.position.x)) + 2 * Math.PI) % (2 * Math.PI) < player.shield)) {
             creature.life -= this.damage;
-            if (creature === game.player) game.damageStar = false;
+            if (creature === player) game.damageStar = false;
           }
           if (creature.life <= 0) creature.die(true);
           this.bounceWith(creature);
@@ -241,13 +222,9 @@ addEventListener("load", () => {
         this.addBounce();
       }
       if (this.position.y < this.radius) {
-        this.position.y = this.radius;
-        this.speed.y *= -1;
-        this.addBounce();
+        this.delete();
       } else if (innerHeight - this.radius < this.position.y) {
-        this.position.y = innerHeight - this.radius;
-        this.speed.y *= -1;
-        this.addBounce();
+        this.delete();
       }
       this.div.style.left = (this.position.x - this.radius) + "px";
       this.div.style.top = (this.position.y - this.radius) + "px";
@@ -265,9 +242,13 @@ addEventListener("load", () => {
     addBounce() {
       this.bounces++;
       if (this.maxBounces <= this.bounces) {
-        this.div.remove();
-        game.proyectiles.delete(this);
+        this.delete();
       }
+    }
+
+    delete() {
+      this.div.remove();
+      game.proyectiles.delete(this);
     }
   }
 
@@ -286,10 +267,10 @@ addEventListener("load", () => {
       game.enemies.delete(this);
       if (drop && Math.random() < this.dropChance) {
         if (Math.random() < 0.5) game.drops.add(new Drop("heart", new Vector(this.position.x, this.position.y), () => {
-          game.player.life++;
+          player.life++;
         }));
         else game.drops.add(new Drop("skill-point", new Vector(this.position.x, this.position.y), () => {
-          game.player.skillPoints++;
+          skillPoints++;
           document.getElementById("skill-points").innerText++;
         }));
       }
@@ -306,7 +287,7 @@ addEventListener("load", () => {
     }
 
     tryToAttack() {
-      if (this.attackDelay <= this.framesSinceAttack) {
+      if (this.attackDelay <= this.framesSinceAttack && 0 <= this.position.y) {
         this.attack();
         this.framesSinceAttack = 0;
       } else this.framesSinceAttack++;
@@ -319,41 +300,41 @@ addEventListener("load", () => {
 
   class Bug extends Enemy {
     constructor() {
-      super(1, 10, 2, 60, 0.1);
+      super(1, 10, 2, 60, 0.15);
       this.div.classList.add("bug");
     }
   }
 
   class Shooter extends Enemy {
     constructor() {
-      super(3, 10, 2, 30, 0.15);
+      super(2, 10, 2, 30, 0.25);
       this.div.classList.add("shooter");
     }
 
     attack() {
-      game.proyectiles.add(new Proyectile(this, Math.atan2(game.player.position.y - this.position.y, game.player.position.x - this.position.x), 1, 1, 6));
+      game.proyectiles.add(new Proyectile(this, Math.atan2(player.position.y - this.position.y, player.position.x - this.position.x), 2, 2, 6));
     }
   }
 
   class Sniper extends Enemy {
     constructor() {
-      super(3, 10, 2, 90, 0.15);
+      super(3, 10, 2, 90, 0.25);
       this.div.classList.add("sniper");
     }
 
     attack() {
-      game.proyectiles.add(new Proyectile(this, Math.atan2(game.player.position.y - this.position.y, game.player.position.x - this.position.x), 1, 1, 12));
+      game.proyectiles.add(new Proyectile(this, Math.atan2(player.position.y - this.position.y, player.position.x - this.position.x), 1, 1, 12));
     }
   }
 
   class Kamikaze extends Enemy {
     constructor() {
-      super(1, 10, 4, 45, 0.15);
+      super(1, 10, 4, 45, 0.25);
       this.div.classList.add("kamikaze");
     }
 
     move() {
-      var angle = Math.atan2(game.player.position.y - this.position.y, game.player.position.x - this.position.x);
+      var angle = Math.atan2(player.position.y - this.position.y, player.position.x - this.position.x);
       this.position.x += this.speed.x * Math.cos(angle);
       this.position.y += this.speed.y * Math.sin(angle);
       this.div.style.left = (this.position.x - this.radius) + "px";
@@ -389,7 +370,12 @@ addEventListener("load", () => {
   }
 
   function loop() {
-    var player = game.player;
+    player.ctx.clearRect(0, 0, 32, 32);
+    if (game.rightPressed) {
+      player.ctx.beginPath();
+      player.ctx.arc(16, 16, 16, player.angle - player.shield / 2, player.angle + player.shield / 2);
+      player.ctx.stroke();
+    }
     var pressedKeys = game.pressedKeys;
     game.backgroundPosition++;
     document.body.style.backgroundPosition = "0 " + game.backgroundPosition + "px";
@@ -419,36 +405,65 @@ addEventListener("load", () => {
       game.proyectiles.add(new Proyectile(player, player.angle, player.maxBounces, player.damage, 6));
     }
     for (var drop of game.drops) {
-      if (distance(game.player, drop) < game.player.radius + 6) drop.pickUp();
+      if (distance(player, drop) < player.radius + 6) drop.pickUp();
     }
     game.attDelay--;
     game.frame++;
-    if (!game.enemies.size && game.currentLevel.monsterClasses.length <= game.currentLevel.index && 0 <= game.player.life) {
+    if (!game.enemies.size && game.currentLevel.monsterClasses.length <= game.currentLevel.index && 0 <= player.life) {
       for (var drop of game.drops) drop.pickUp();
-      game.player.life = game.player.maxLife;
+      player.life = player.maxLife;
       game.currentLevel.maxStartReached = 1 + game.damageStar + game.bottomStar;
+      document.getElementsByClassName("level")[game.currentLevel.level].classList.remove("inactive");
+      levelReached = Math.max(levelReached, game.currentLevel.level);
       game.paused = true;
       document.getElementById("level-selection").style.display = "";
     }
     if (!game.paused) requestAnimationFrame(loop);
   }
 
-  var game = new Game();
   var levels = [];
+  var skillPoints = 65;
+  var player = new Player(new Vector(innerWidth / 2, innerHeight / 2), 87, 65, 83, 68, 16);
+  var skills = [
+    new Skill(player, () => {
+      player.maxLife += 10;
+      player.life += 10;
+      document.getElementById("max-health").innerText = player.maxLife;
+    }, "", "Life", "Adds 10 to the player's max life."),
+    new Skill(player, () => {
+      player.maxBounces++;
+    }, "", "Bounciness", "Your bullets bounce one more time."),
+    new Skill(player, () => {
+      player.damage++;
+    }, "", "Damage", "Increases your bullets' damage by one."),
+    new Skill(player, () => {
+      player.attDelay -= 5;
+    }, "", "Attack speed", "Increases your attack speed."),
+    new Skill(player, () => {
+      player.speedMultiplier *= 1.15;
+    }, "", "Speed", "Increases your run speed by 15%."),
+    new Skill(player, () => {
+      player.shield *= 1.1;
+    }, "", "Shield", "Increases your shield size by 10%.")
+  ];
+  var game = new Game();
   (function() {
     function pushLevel() {
       levels.push(new Level(level++, monsters));
       monsters = [];
     }
-
     var level = 1;
     var monsters = [];
     //test
-    for (i = 0; i < 100; i++) {
+    for (i = 0; i < 10; i++) {
       monsters.push(Bug);
+    }
+    for (i = 0; i < 10; i++) {
       monsters.push(Shooter);
+    }
+    for (i = 0; i < 10; i++) {
+      monsters.push(Kamikaze);
       monsters.push(Sniper);
-      monsters.push(Kamikaze)
     }
     pushLevel();
     //end test
@@ -507,14 +522,11 @@ addEventListener("load", () => {
     game.pressedKeys[e.keyCode] = true;
     if (e.keyCode === 32) {
       var style = document.getElementById("pause-menu").style;
-      if (game.player.life <= 0) {
+      if (player.life <= 0) {
         document.getElementById("restart-menu").style.display = "none";
         style.display = "none";
-        for (var skill of game.skills) skill.row.remove();
-        game.player.div.remove();
+        game.currentLevel.start();
         game.restart();
-        game.paused = false;
-        requestAnimationFrame(loop);
       } else if (style.display === "none") {
         style.display = "";
         game.paused = true;
@@ -525,5 +537,4 @@ addEventListener("load", () => {
       }
     }
   });
-  requestAnimationFrame(loop);
 });

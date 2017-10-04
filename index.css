@@ -123,3 +123,8 @@ html, body {
 	cursor: pointer;
 	padding: 4px;
 }
+
+canvas{
+	z-index: 5;
+	position:absolute;
+}
